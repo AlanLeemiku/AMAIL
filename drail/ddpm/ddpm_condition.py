@@ -40,7 +40,7 @@ def standardization(data):
     return (data - mu) / sigma
 
 ########### hyper parameter
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 num_steps = 1000
 batch_size = 128 #128
 num_epoch = 10000
@@ -67,8 +67,9 @@ print("all the same shape",betas.shape)
 def q_x(x_0,t):
     """based on x[0], get x[t] on any given time t"""
     noise = torch.randn_like(x_0)
-    alphas_t = alphas_bar_sqrt[t]
-    alphas_1_m_t = one_minus_alphas_bar_sqrt[t]
+    use_device = x_0.device
+    alphas_t = alphas_bar_sqrt.to(use_device)[t.to(use_device)]
+    alphas_1_m_t = one_minus_alphas_bar_sqrt.to(use_device)[t.to(use_device)]
     return (alphas_t * x_0 + alphas_1_m_t * noise) # adding noise based on x[0]在x[0]
 
 ########### gaussian distribution in reverse diffusion process
@@ -76,8 +77,9 @@ import torch
 import torch.nn as nn
 
 class MLPConditionDiffusion(nn.Module):
-    def __init__(self, n_steps, cond_dim=6, data_dim=1, num_units=128, depth=4, device='cuda:0'):
+    def __init__(self, n_steps, cond_dim=6, data_dim=1, num_units=128, depth=4, device=None):
         super(MLPConditionDiffusion,self).__init__()
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.data_dim = data_dim
         linears_list = []
         linears_list.append(nn.Linear(cond_dim + data_dim, num_units))
@@ -111,7 +113,7 @@ class MLPConditionDiffusion(nn.Module):
 
     def p_sample_loop(self, cond, n_steps, betas, one_minus_alphas_bar_sqrt):
         batch_size = cond.shape[0]
-        cur_x = torch.randn(batch_size, self.data_dim)
+        cur_x = torch.randn(batch_size, self.data_dim, device=cond.device)
         x_seq = [cur_x]
         for i in reversed(range(n_steps)):
             cur_x = self.p_sample(cur_x,cond,i,betas,one_minus_alphas_bar_sqrt)
@@ -120,7 +122,10 @@ class MLPConditionDiffusion(nn.Module):
 
     def p_sample(self, x, c, t, betas,one_minus_alphas_bar_sqrt):
         # sample reconstruction data at time t drom x[T]
-        t = torch.tensor([t]).to(device)
+        use_device = x.device
+        t = torch.tensor([t], device=use_device)
+        betas = betas.to(use_device)
+        one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
 
         coeff = betas[t] / one_minus_alphas_bar_sqrt[t]
     
@@ -146,7 +151,7 @@ def norm_vec(x, mean, std):
 ########### reverse diffusion sample function（inference）
 def p_sample_loop(model, cond, shape,n_steps, betas, one_minus_alphas_bar_sqrt):
     # generate[T-1]、x[T-2]|...x[0] from x[T]
-    cur_x = torch.randn(shape)
+    cur_x = torch.randn(shape, device=cond.device)
     x_seq = [cur_x]
     for i in reversed(range(n_steps)):
         cur_x = p_sample(model,cur_x,cond,i,betas,one_minus_alphas_bar_sqrt)
@@ -155,7 +160,10 @@ def p_sample_loop(model, cond, shape,n_steps, betas, one_minus_alphas_bar_sqrt):
 
 def p_sample(model, x, c, t, betas,one_minus_alphas_bar_sqrt):
     # sample reconstruction data at time t drom x[T]
-    t = torch.tensor([t]).to(device)
+    use_device = x.device
+    t = torch.tensor([t], device=use_device)
+    betas = betas.to(use_device)
+    one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
 
     coeff = betas[t] / one_minus_alphas_bar_sqrt[t]
  

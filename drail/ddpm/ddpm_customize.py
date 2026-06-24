@@ -40,7 +40,7 @@ def standardization(data):
     return (data - mu) / sigma
 
 ########### hyper parameter
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 num_steps = 1000
 batch_size = 128 #128
 num_epoch = 10000
@@ -67,8 +67,9 @@ print("all the same shape",betas.shape)
 def q_x(x_0,t):
     """based on x[0], get x[t] on any given time t"""
     noise = torch.randn_like(x_0)
-    alphas_t = alphas_bar_sqrt[t]
-    alphas_1_m_t = one_minus_alphas_bar_sqrt[t]
+    use_device = x_0.device
+    alphas_t = alphas_bar_sqrt.to(use_device)[t.to(use_device)]
+    alphas_1_m_t = one_minus_alphas_bar_sqrt.to(use_device)[t.to(use_device)]
     return (alphas_t * x_0 + alphas_1_m_t * noise) # adding noise based on x[0]在x[0]
 
 ########### gaussian distribution in reverse diffusion process
@@ -76,8 +77,9 @@ import torch
 import torch.nn as nn
 
 class MLPDiffusionCustomize(nn.Module):
-    def __init__(self, n_steps, input_dim=6, num_units=128, depth=4, device='cuda:0'):
+    def __init__(self, n_steps, input_dim=6, num_units=128, depth=4, device=None):
         super(MLPDiffusionCustomize,self).__init__()
+        device = torch.device("cpu") if device is None else torch.device(device)
         linears_list = []
         linears_list.append(nn.Linear(input_dim, num_units))
         linears_list.append(nn.ReLU())
@@ -118,16 +120,19 @@ def norm_vec(x, mean, std):
 # sample at any given time t, and calculate sampling loss
 def diffusion_loss_fn(model, x_0, alphas_bar_sqrt, one_minus_alphas_bar_sqrt, n_steps):
     batch_size = x_0.shape[0]
+    use_device = x_0.device
     
     # generate eandom t for a batch data
-    t = torch.randint(0, n_steps, size=(batch_size//2,)).to(device)
+    t = torch.randint(0, n_steps, size=(batch_size//2,), device=use_device)
     t = torch.cat([t, n_steps-1-t], dim=0) #[batch_size, 1]
     t = t.unsqueeze(-1)
     
     # coefficient of x0
+    alphas_bar_sqrt = alphas_bar_sqrt.to(use_device)
     a = alphas_bar_sqrt[t]
     
     # coefficient of eps
+    one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
     aml = one_minus_alphas_bar_sqrt[t]
     
     # generate random noise eps
@@ -145,7 +150,8 @@ def diffusion_loss_fn(model, x_0, alphas_bar_sqrt, one_minus_alphas_bar_sqrt, n_
 ########### reverse diffusion sample function（inference）
 def p_sample_loop(model, shape,n_steps, betas, one_minus_alphas_bar_sqrt):
     # generate[T-1]、x[T-2]|...x[0] from x[T]
-    cur_x = torch.randn(shape)
+    model_device = next(model.parameters()).device
+    cur_x = torch.randn(shape, device=model_device)
     x_seq = [cur_x]
     for i in reversed(range(n_steps)):
         cur_x = p_sample(model,cur_x,i,betas,one_minus_alphas_bar_sqrt)
@@ -154,7 +160,10 @@ def p_sample_loop(model, shape,n_steps, betas, one_minus_alphas_bar_sqrt):
 
 def p_sample(model, x, t, betas,one_minus_alphas_bar_sqrt):
     # sample reconstruction data at time t drom x[T]
-    t = torch.tensor([t]).to(device)
+    use_device = x.device
+    t = torch.tensor([t], device=use_device)
+    betas = betas.to(use_device)
+    one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
 
     coeff = betas[t] / one_minus_alphas_bar_sqrt[t]
  
@@ -170,17 +179,20 @@ def p_sample(model, x, t, betas,one_minus_alphas_bar_sqrt):
     return (sample)
 
 def reconstruct(model, x_0, alphas_bar_sqrt, one_minus_alphas_bar_sqrt, n_steps):
+    use_device = x_0.device
     # generate random t for a batch data
-    t = torch.ones_like(x_0, dtype = torch.long).to(device) * n_steps
+    t = torch.ones_like(x_0, dtype = torch.long, device=use_device) * n_steps
 
     # coefficient of x0
+    alphas_bar_sqrt = alphas_bar_sqrt.to(use_device)
     a = alphas_bar_sqrt[t]
     
     # coefficient of eps
+    one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
     aml = one_minus_alphas_bar_sqrt[t]
     
     # generate random noise eps
-    e = torch.randn_like(x_0).to(device)
+    e = torch.randn_like(x_0)
     
     # model input
     x_T = x_0*a + e*aml

@@ -178,7 +178,8 @@ class replaybuffer:
 def init_seeds(args):
     # Set all seeds
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    if args.device.type == "cuda":
+        torch.cuda.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
 
@@ -333,7 +334,33 @@ class RunSettings(MasterClass):
         log.init(args)
         log.set_prefix(args)
 
-        args.device = torch.device("cuda:0" if args.cuda else "cpu")
+        if args.cuda:
+            if not torch.cuda.is_available():
+                raise RuntimeError("--cuda True was set, but CUDA is not available.")
+            cuda_device = args.cuda_device
+            physical_cuda_device = cuda_device
+            if os.environ.get("RLF_CUDA_DEVICE_REMAPPED") == "1":
+                cuda_device = 0
+                physical_cuda_device = int(
+                    os.environ.get("RLF_PHYSICAL_CUDA_DEVICE", args.cuda_device)
+                )
+            if cuda_device < 0 or cuda_device >= torch.cuda.device_count():
+                raise ValueError(
+                    "--cuda-device must be in [0, %d], got %d"
+                    % (torch.cuda.device_count() - 1, args.cuda_device)
+                )
+            torch.cuda.set_device(cuda_device)
+            args.device = torch.device("cuda:%d" % cuda_device)
+        else:
+            physical_cuda_device = None
+            args.device = torch.device("cpu")
+        if physical_cuda_device is None:
+            print("Using device:", args.device)
+        else:
+            print(
+                "Using device: %s (physical cuda:%d)"
+                % (args.device, physical_cuda_device)
+            )
         init_seeds(args)
         if args.detect_nan:
             torch.autograd.set_detect_anomaly(True)

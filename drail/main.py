@@ -9,8 +9,46 @@
 import sys
 import os
 
-sys.path.insert(0, "./")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../rl-toolkit")))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+RL_TOOLKIT_ROOT = os.path.join(PROJECT_ROOT, "rl-toolkit")
+D4RL_ROOT = os.path.join(PROJECT_ROOT, "d4rl")
+
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, RL_TOOLKIT_ROOT)
+sys.path.insert(0, D4RL_ROOT)
+
+
+def _get_cli_value(*flags):
+    for i, arg in enumerate(sys.argv):
+        for flag in flags:
+            if arg == flag and i + 1 < len(sys.argv):
+                return sys.argv[i + 1]
+            prefix = flag + "="
+            if arg.startswith(prefix):
+                return arg[len(prefix):]
+    return None
+
+
+def _is_false(value):
+    return value is not None and value.lower() in ("0", "false", "f", "no", "n")
+
+
+def _apply_cuda_visible_devices_from_cli():
+    if _is_false(_get_cli_value("--cuda")):
+        return
+    if os.environ.get("CUDA_VISIBLE_DEVICES"):
+        return
+
+    cuda_device = _get_cli_value("--cuda-device", "--gpu-id")
+    if cuda_device is None:
+        return
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(cuda_device))
+    os.environ["RLF_CUDA_DEVICE_REMAPPED"] = "1"
+    os.environ["RLF_PHYSICAL_CUDA_DEVICE"] = str(int(cuda_device))
+
+
+_apply_cuda_visible_devices_from_cli()
 
 from functools import partial
 

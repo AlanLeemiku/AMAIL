@@ -28,7 +28,7 @@ import inspect
 from functools import partial
 import rlf.rl.utils as rutils
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 def linear_beta_schedule(timesteps):
     beta_start = 0.0001
@@ -67,8 +67,9 @@ def standardization(data):
 def q_x(x_0,t):
     """based on x[0], get x[t] on any given time t"""
     noise = torch.randn_like(x_0)
-    alphas_t = alphas_bar_sqrt[t]
-    alphas_1_m_t = one_minus_alphas_bar_sqrt[t]
+    use_device = x_0.device
+    alphas_t = alphas_bar_sqrt.to(use_device)[t.to(use_device)]
+    alphas_1_m_t = one_minus_alphas_bar_sqrt.to(use_device)[t.to(use_device)]
     return (alphas_t * x_0 + alphas_1_m_t * noise) # adding noise based on x[0]在x[0]
 
 ########### gaussian distribution in reverse diffusion process
@@ -89,13 +90,14 @@ class MLPDiffusion(BasicPolicy, nn.Module):
             state_dim=6,
             num_units=1024,
             depth=2,
-            device='0', 
+            device=None,
             is_stoch=False,
             fuse_states=[],
             use_goal=False,
             get_base_net_fn=None):
         input_dim = action_dim + state_dim
         super(MLPDiffusion, self).__init__()
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.action_dim = action_dim
         self.state_dim = state_dim
         linears_list = []
@@ -144,7 +146,7 @@ class MLPDiffusion(BasicPolicy, nn.Module):
     def diffusion_loss_fn(self, x_0, condition, alphas_bar_sqrt, one_minus_alphas_bar_sqrt, n_steps):
         batch_size = x_0.shape[0]
         # generate eandom t for a batch data
-        t = torch.randint(0, n_steps, size=(batch_size//2,)).to(device)
+        t = torch.randint(0, n_steps, size=(batch_size//2,), device=x_0.device)
         t = torch.cat([t, n_steps-1-t], dim=0) #[batch_size, 1]
         t = t.unsqueeze(-1)
         
@@ -181,7 +183,7 @@ class MLPDiffusion(BasicPolicy, nn.Module):
     ########### reverse diffusion sample function（inference）
     def p_sample_loop(self, condition, shape, n_steps, betas, one_minus_alphas_bar_sqrt):
         # generate[T-1]、x[T-2]|...x[0] from x[T]
-        cur_x = torch.randn(shape)
+        cur_x = torch.randn(shape, device=condition.device)
         x_seq = [cur_x]
         for i in reversed(range(n_steps)):
             cur_x = self.p_sample(cur_x, condition, i, betas,one_minus_alphas_bar_sqrt)
@@ -190,7 +192,10 @@ class MLPDiffusion(BasicPolicy, nn.Module):
 
     def p_sample(self, x, condition, t, betas, one_minus_alphas_bar_sqrt):
         # sample reconstruction data at time t drom x[T]
-        t = torch.tensor([t]).to(device)
+        use_device = x.device
+        t = torch.tensor([t], device=use_device)
+        betas = betas.to(use_device)
+        one_minus_alphas_bar_sqrt = one_minus_alphas_bar_sqrt.to(use_device)
         coeff = betas[t] / one_minus_alphas_bar_sqrt[t]
         input_data = torch.cat((x, condition), 1)
         eps_theta = self.output(input_data, t)
@@ -244,7 +249,7 @@ class MLPDiffusion(BasicPolicy, nn.Module):
         one_minus_alphas_bar_sqrt = torch.sqrt(1 - alphas_prod)
         # import ipdb
         # ipdb.set_trace()
-        predict_action = self.reconstruct(state, self.action_dim, num_steps, betas, one_minus_alphas_bar_sqrt, device)
+        predict_action = self.reconstruct(state, self.action_dim, num_steps, betas, one_minus_alphas_bar_sqrt, self.args.device)
 
         return CreateAction(predict_action)
 

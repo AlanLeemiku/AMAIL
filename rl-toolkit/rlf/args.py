@@ -185,7 +185,15 @@ def add_args(parser):
     # POLICY
     #############################
     parser.add_argument(
-        "--cuda", type=str2bool, default=True, help="disables CUDA training"
+        "--cuda", type=str2bool, default=True, help="whether to use CUDA training"
+    )
+    parser.add_argument(
+        "--cuda-device",
+        "--gpu-id",
+        dest="cuda_device",
+        type=int,
+        default=0,
+        help="CUDA device index to use when --cuda True, e.g. 0, 1, 2",
     )
     parser.add_argument("--gradient-clip", type=str2bool, default=False)
     parser.add_argument("--gradient-clip-period", type=float, default=0.2)

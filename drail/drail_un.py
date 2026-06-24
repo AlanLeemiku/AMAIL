@@ -54,7 +54,13 @@ class Discriminator(nn.Module):
         self.alphas_bar_sqrt = torch.sqrt(alphas_prod).to(self.args.device)
         self.one_minus_alphas_bar_sqrt = torch.sqrt(1 - alphas_prod).to(self.args.device)
 
-        d_model = MLPDiffusionCustomize(n_steps, input_dim, num_units=num_units, depth=self.args.discrim_depth).to(self.args.device)
+        d_model = MLPDiffusionCustomize(
+            n_steps,
+            input_dim,
+            num_units=num_units,
+            depth=self.args.discrim_depth,
+            device=self.args.device,
+        ).to(self.args.device)
         
         try:
             self.base_net = base_net.net.to(self.args.device)

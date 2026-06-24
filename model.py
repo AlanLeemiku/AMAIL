@@ -7,12 +7,12 @@ import numpy as np
 
 # GILD: Generalized Imitation Lerning from Demonstrations
 class GILD_Network(nn.Module):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, output_scale=5.0):
         super(GILD_Network, self).__init__()
         self.fc1 = nn.Linear(input_dim,256)
         self.fc2 = nn.Linear(256,256)
         self.fc3 = nn.Linear(256,1)
-        self.output_scale = 5.0
+        self.output_scale = output_scale
     def forward(self, x):
         # LeakyReLU keeps a non-zero slope for negative activations to reduce dead-unit collapse.
         x = F.leaky_relu(self.fc1(x), negative_slope=0.1)

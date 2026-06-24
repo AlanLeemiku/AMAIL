@@ -34,6 +34,10 @@ except:
     pass
 from drail.ddpm import MLPConditionDiffusion
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DEFAULT_LWAIL_PHI_ROOT = os.path.join(PROJECT_ROOT, "LWAIL", "icvf_model")
+
+
 def cosine_beta_schedule(timesteps, s=0.008):
     """
     cosine schedule as proposed in https://arxiv.org/abs/2102.09672
@@ -60,7 +64,14 @@ class Discriminator(nn.Module):
         self.alphas_bar_sqrt = torch.sqrt(alphas_prod).to(self.args.device)
         self.one_minus_alphas_bar_sqrt = torch.sqrt(1 - alphas_prod).to(self.args.device)
 
-        d_model = MLPConditionDiffusion(n_steps, self.args.label_dim, input_dim, num_units=num_units, depth=self.args.discrim_depth).to(self.args.device)
+        d_model = MLPConditionDiffusion(
+            n_steps,
+            self.args.label_dim,
+            input_dim,
+            num_units=num_units,
+            depth=self.args.discrim_depth,
+            device=self.args.device,
+        ).to(self.args.device)
         try:
             self.base_net = base_net.net.to(self.args.device)
         except:
@@ -126,7 +137,6 @@ class Discriminator(nn.Module):
         return diff_loss
 
     def forward(self, state, action, label):
-        
         if self.base_net:
             state = self.base_net(state)
         state_action = torch.cat([state, action], dim=1)
@@ -523,6 +533,11 @@ class DRAILDiscrim(BaseIRLAlgo):
         parser.add_argument('--sample-strategy-value', type=int, default=250)
         parser.add_argument('--n-drail-epochs', type=int, default=1)
         parser.add_argument('--label-dim', type=int, default=10)
+        parser.add_argument('--drail-use-lwail-phi', type=str2bool, default=False)
+        parser.add_argument('--drail-lwail-phi-path', type=str, default=None)
+        parser.add_argument('--drail-lwail-phi-root', type=str, default=DEFAULT_LWAIL_PHI_ROOT)
+        parser.add_argument('--drail-lwail-phi-mode', type=str, default='concat',
+                choices=['concat', 'replace'])
         parser.add_argument('--test-sine-env', type=str2bool, default=False)
         parser.add_argument('--deeper-ddpm', type=str2bool, default=False)
         parser.add_argument('--reward-type', type=str, default='airl', help="""
@@ -552,4 +567,3 @@ class GILD_Network(nn.Module):
         x = torch.relu(self.fc2(x))
         x = F.softplus(self.fc3(x))
         return x
-
